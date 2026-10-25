@@ -3,43 +3,46 @@
 
 investor:
   mena: CZK
-  kapital_celkem: 500000          # kolik máš celkem k investování
-  rezerva_hotovost: 100000         # nouzová rezerva, na kterou se nesahá
-  tolerance_rizika: stredni        # nizka | stredni | vysoka
-  horizont_let: 15                 # dlouhodobý horizont
-  zkusenosti: zacatecnik           # zacatecnik | pokrocily | profesional
+  kapital_celkem: 2500000          # celý budget k obchodování
+  rezerva_hotovost: 0              # žádná vyčleněná rezerva
+  broker: XTB                      # doporučovat jen instrumenty dostupné u XTB
+  tolerance_rizika: vysoka         # nizka | stredni | vysoka
+  horizont_let: 5
+  zkusenosti: pokrocily            # zacatecnik | pokrocily | profesional
   cile:
-    - Dlouhodobé zhodnocení na důchod
-    - Část kapitálu (max 10 %) na krátkodobý trading
+    - Maximální zhodnocení, investor přijímá vysoké riziko a velké výkyvy
+    - Aktivní obchodování celého kapitálu přes XTB
+  obchodovatelne_u_brokera:
+    - Akcie a ETF (reálné, bez páky)
+    - CFD na akcie, ETF, indexy, forex, komodity a krypto (s pákou dle limitů ESMA)
   omezeni:
-    - Žádné páky vyšší než 2x
-    - Žádné opce, pokud nejsou vysvětlené krok po kroku
+    - Páka jen v limitech XTB/ESMA pro retail (forex 1:30, indexy 1:20, komodity 1:10, akcie 1:5, krypto 1:2)
+    - Každý obchod musí mít stop-loss
 
 # Rozdělení kapitálu mezi strategie (v %)
 alokace_cil:
-  dlouhodobe: 75
-  kratkodobe_swing: 15
-  trading: 10
+  dlouhodobe: 30
+  kratkodobe_swing: 35
+  trading: 35
 
 # Co aktuálně držíš (ticker podle Yahoo Finance, počet kusů, nákupní cena)
-portfolio:
-  - ticker: VWCE.DE
-    kusy: 40
-    nakupni_cena: 105.0
-  - ticker: AAPL
-    kusy: 10
-    nakupni_cena: 180.0
-  - ticker: BTC-USD
-    kusy: 0.05
-    nakupni_cena: 60000
+# Zatím prázdné – tým navrhne, jak kapitál postupně nasadit.
+portfolio: []
 
-# Co má tým sledovat (akcie, ETF, krypto, komodity, indexy, měny)
+# Co má tým sledovat (vše je obchodovatelné u XTB)
 watchlist:
-  - ^GSPC      # S&P 500
-  - ^IXIC      # Nasdaq
+  - ^GSPC      # S&P 500 (CFD US500)
+  - ^IXIC      # Nasdaq (CFD US100)
+  - ^GDAXI     # DAX (CFD DE40)
   - NVDA
   - MSFT
+  - TSLA
+  - AMD
+  - META
   - CEZ.PR     # ČEZ
+  - BTC-USD
   - ETH-USD
   - GC=F       # zlato
+  - CL=F       # ropa WTI
+  - EURUSD=X
   - EURCZK=X
