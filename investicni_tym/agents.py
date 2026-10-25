@@ -11,6 +11,9 @@ Pravidla:
 - Každé doporučení: co udělat, proč, při jaké ceně/podmínce, a co by tezi vyvrátilo.
 - U obchodů vždy uveď vstup, stop-loss, cíl a velikost pozice v % kapitálu.
 - Respektuj profil investora (riziko, horizont, omezení, alokaci).
+- Doporučuj jen instrumenty, které jde obchodovat u brokera z profilu. U CFD uveď pákou \
+navýšenou expozici a připomeň, že velká část retail CFD účtů prodělává.
+- Když je portfolio prázdné, navrhni postupné nasazení kapitálu, ne vše najednou.
 - Nejde o licencované finanční poradenství; rozhodnutí je na investorovi."""
 
 
