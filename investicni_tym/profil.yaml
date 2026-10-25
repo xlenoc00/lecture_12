@@ -1,0 +1,45 @@
+# Tvůj investiční profil – upravuj podle sebe.
+# Tým agentů z něj vychází při každém doporučení.
+
+investor:
+  mena: CZK
+  kapital_celkem: 500000          # kolik máš celkem k investování
+  rezerva_hotovost: 100000         # nouzová rezerva, na kterou se nesahá
+  tolerance_rizika: stredni        # nizka | stredni | vysoka
+  horizont_let: 15                 # dlouhodobý horizont
+  zkusenosti: zacatecnik           # zacatecnik | pokrocily | profesional
+  cile:
+    - Dlouhodobé zhodnocení na důchod
+    - Část kapitálu (max 10 %) na krátkodobý trading
+  omezeni:
+    - Žádné páky vyšší než 2x
+    - Žádné opce, pokud nejsou vysvětlené krok po kroku
+
+# Rozdělení kapitálu mezi strategie (v %)
+alokace_cil:
+  dlouhodobe: 75
+  kratkodobe_swing: 15
+  trading: 10
+
+# Co aktuálně držíš (ticker podle Yahoo Finance, počet kusů, nákupní cena)
+portfolio:
+  - ticker: VWCE.DE
+    kusy: 40
+    nakupni_cena: 105.0
+  - ticker: AAPL
+    kusy: 10
+    nakupni_cena: 180.0
+  - ticker: BTC-USD
+    kusy: 0.05
+    nakupni_cena: 60000
+
+# Co má tým sledovat (akcie, ETF, krypto, komodity, indexy, měny)
+watchlist:
+  - ^GSPC      # S&P 500
+  - ^IXIC      # Nasdaq
+  - NVDA
+  - MSFT
+  - CEZ.PR     # ČEZ
+  - ETH-USD
+  - GC=F       # zlato
+  - EURCZK=X
