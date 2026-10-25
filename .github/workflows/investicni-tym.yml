@@ -1,0 +1,49 @@
+name: Investiční AI tým
+
+on:
+  schedule:
+    # Každé 4 hodiny, nonstop (časy jsou v UTC). Krypto se obchoduje i o víkendu.
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      otazka:
+        description: "Volitelný dotaz pro tým (prázdné = pravidelná porada)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: investicni-tym
+  cancel-in-progress: false
+
+jobs:
+  porada:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Porada týmu
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OTAZKA: ${{ github.event.inputs.otazka }}
+        run: |
+          if [ -n "$OTAZKA" ]; then
+            python -m investicni_tym dotaz "$OTAZKA" > posledni.md
+          else
+            python -m investicni_tym porada > posledni.md
+          fi
+          cat posledni.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Uložit report do repozitáře
+        run: |
+          git config user.name "investicni-tym[bot]"
+          git config user.email "investicni-tym@users.noreply.github.com"
+          git add reports/
+          git diff --cached --quiet || git commit -m "Investiční porada $(date -u +'%Y-%m-%d %H:%M')"
+          git push
