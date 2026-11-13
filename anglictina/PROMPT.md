@@ -10,17 +10,17 @@ Postav mi webovou aplikaci na samostudium angličtiny. Všechny texty rozhraní 
 
 - Jsem [začátečník, znám jen pár základních slovíček, větu neposkládám].
 - Chci [obecný pevný základ: gramatiku, každodenní slovíčka a výslovnost].
-- Budu se učit [20 minut denně] po dobu [14 týdnů, tedy 98 dní].
+- Budu se učit [20 minut denně] po dobu [jednoho roku, tedy 52 týdnů]. Když mě to chytne, chci mít možnost pokračovat další lekcí hned ten den.
 - Budu se učit [střídavě na mobilu a na počítači].
-- Na konci chci [rozumět jednoduchým větám, domluvit se v běžných situacích a umět přítomný, minulý a budoucí čas, zhruba úroveň A1 až začátek A2].
+- Na konci chci [být v angličtině opravdu dobrý: plynule se domluvit, rozumět běžným textům a filmům a ovládat celou gramatiku úrovně B1 až B2].
 
 ## Jak má vypadat kurz
 
-- 14 týdnů, každý má jedno téma ze života (pozdravy, rodina, čísla a čas, domov, jídlo, denní režim, město a cestování, nakupování, volný čas, právě teď a počasí, minulost I a II, budoucnost, porovnávání a zdraví).
+- 52 týdnů ve čtyřech stupních: základy (A1, týdny 1–14), rozjezd (A2, 15–26), samostatnost (B1, 27–39) a jistota (B1+ až B2, 40–52). Každý týden má jedno téma ze života, od pozdravů a rodiny přes práci, cestování a zdraví až po média, politiku, formální e-maily, frázová slovesa a idiomy.
 - Každý týden má 6 lekcí a sedmý den test z celého týdne.
-- Každý týden obsahuje 48 slovíček (6 skupin po 8), 3 gramatická témata, 12 vzorových vět a 1 výslovnostní tip zaměřený na to, co dělá potíže Čechům.
-- Gramatika postupuje od slovesa být přes přítomný čas prostý a průběhový, can, minulý čas, going to a will až po stupňování a must / have to / should. Každé téma se probírá dva dny po sobě: první den výklad, druhý den připomenutí.
-- U každého slovíčka uveď český překlad a přibližnou výslovnost zapsanou českými písmeny.
+- Každý týden obsahuje 48 slovíček (6 skupin po 8), 3 gramatická témata, 12 vzorových vět, 2 krátké rozhovory ze života a 1 výslovnostní tip zaměřený na to, co dělá potíže Čechům.
+- Gramatika postupuje od slovesa být přes všechny časy (včetně předpřítomného, předminulého a předbudoucího), trpný rod, podmínkové věty, nepřímou řeč a vztažné věty až po slovotvorbu a typické české chyby. Každé téma se probírá dva dny po sobě: první den výklad, druhý den připomenutí.
+- U každého slovíčka uveď český překlad a na úrovních A1 a A2 i přibližnou výslovnost zapsanou českými písmeny.
 - Výklad gramatiky piš krátce, s příklady a s upozorněním, v čem se angličtina liší od češtiny.
 
 ## Jak má vypadat jedna denní lekce (asi 20 minut)
@@ -29,18 +29,23 @@ Postav mi webovou aplikaci na samostudium angličtiny. Všechny texty rozhraní 
 2. Nová slovíčka: 8 slov, každé nejdřív ukázat s výslovností a přehráním, potom procvičit výběrem z možností oběma směry a psaním.
 3. Gramatika: krátký výklad a doplňování správného tvaru do věty.
 4. Věty: skládání anglické věty z rozházených slov podle českého překladu.
-5. Poslech: přehraje se slovo a já vyberu, které to bylo.
-6. Výslovnost: poslechnu si slovo nebo větu a zopakuju nahlas.
+5. Diktát: přehraje se věta (i zpomaleně) a já ji napíšu.
+6. Poslech a výslovnost: vyberu slovo, které slyším, a zopakuju slova a věty nahlas.
+7. Dvakrát týdně rozhovor: nejdřív si ho poslechnu, potom vybírám správné odpovědi a nakonec hraju jednu roli nahlas.
 
-Na co jsem odpověděl špatně, se mi v lekci vrátí ještě jednou na konci.
+Na co jsem odpověděl špatně, se mi v lekci vrátí ještě jednou na konci. Chyby z gramatiky a vět se navíc vracejí i v dalších dnech, dokud je třikrát po sobě neodpovím správně.
+
+Když nemám čas, chci „pětiminutovku“: pár kartiček, tři otázky z gramatiky a jeden diktát. Počítá se do série, ale neposouvá mě v kurzu.
 
 ## Rozhraní
 
 - Co nejjednodušší. Na úvodní obrazovce jedno velké tlačítko, které spustí dnešní lekci, a přehled, co mě v ní čeká.
 - Během lekce vždy jen jedna úloha na obrazovce, ukazatel postupu nahoře a hned zpětná vazba se správnou odpovědí.
 - Velká tlačítka pro ovládání palcem na mobilu. Na počítači ovládání klávesnicí (číslice 1–4 pro výběr, Enter pro pokračování).
-- Záložky: Dnes, Plán (všech 14 týdnů, hotové lekce jdou zopakovat), Slovíčka (seznam s vyhledáváním a úrovní znalosti), Gramatika (přehled probraného), Nastavení.
-- Motivace: počet dní v řadě, mapa 14 týdnů s vybarvenými hotovými lekcemi, výsledky týdenních testů.
+- Záložky: Dnes, Plán (všech 52 týdnů, hotové lekce jdou zopakovat), Slovíčka (seznam s vyhledáváním a úrovní znalosti), Gramatika (přehled probraného), Nastavení.
+- Docházka, ať vidím, jestli se neflákám: počet dní v řadě, nejdelší série, dnešní minuty proti cíli 20 minut, kalendář posledních 28 dní a upozornění, když sérii přeruším. Počítej jen čas, kdy opravdu odpovídám, a jen dokončené lekce.
+- Mapa celého roku s vybarvenými hotovými týdny a výsledky týdenních testů.
+- Po dokončení lekce nabídni tlačítko pro pokračování další lekcí.
 - Světlý i tmavý režim podle nastavení zařízení, dobře čitelné písmo.
 
 ## Technické požadavky

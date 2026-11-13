@@ -1,6 +1,6 @@
 # Angličtina na 20 minut
 
-Kurz angličtiny pro začátečníky: 14 týdnů, 98 lekcí, každý den asi 20 minut.
+Roční kurz angličtiny od úplných základů po úroveň B1 až B2: 52 týdnů, 364 lekcí, každý den asi 20 minut.
 
 ## Spuštění
 
@@ -8,8 +8,8 @@ Otevři `index.html` v prohlížeči (Chrome, Edge nebo Safari kvůli hlasu). Ni
 
 ## Co je uvnitř
 
-- `data1.js`, `data2.js` – obsah kurzu: 672 slovíček s výslovností, 42 gramatických témat, 252 doplňovaček, 168 vět
-- `app.js` – lekce, kartičky s rozloženým opakováním, týdenní testy, ukládání postupu
+- `data1.js` až `data8.js`, `dialogs.js` – obsah kurzu: 2 496 slovíček, 156 gramatických témat, 936 doplňovaček, 624 vět a 104 rozhovorů
+- `app.js` – lekce, kartičky s rozloženým opakováním, diktát, rozhovory, vracení chyb, pětiminutovka, docházka a týdenní testy
 - `style.css` – vzhled (světlý i tmavý režim)
 - `PROMPT.md` – zadání, podle kterého aplikace vznikla
 

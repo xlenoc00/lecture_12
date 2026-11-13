@@ -77,12 +77,22 @@ body.insession main { padding-bottom: 24px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; }
 .stat strong { display: block; font-family: var(--display); font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .stat span { font-size: .82rem; color: var(--muted); }
-.weeks { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; }
-.weeks .col { display: flex; flex-direction: column; gap: 3px; }
-.weeks i { display: block; aspect-ratio: 1; border-radius: 3px; background: var(--line); }
-.weeks i.done { background: var(--accent); }
-.weeks i.now { background: var(--mark); }
-.weeks small { text-align: center; font-size: .65rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.year { display: grid; grid-template-columns: repeat(13, 1fr); gap: 4px; }
+.cal { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; }
+.year i, .cal i { display: block; aspect-ratio: 1; border-radius: 4px; background: var(--line); }
+.year i.done, .cal i.done { background: var(--accent); }
+.cal i.some { background: var(--accent-soft); border: 2px solid var(--accent); }
+.year i.now { background: var(--mark); }
+.cal i.today { outline: 2px solid var(--mark); outline-offset: 1px; }
+.warn-note { background: var(--bad-soft); color: var(--bad); border-radius: 10px; padding: 10px 12px; font-weight: 600; }
+.locked { display: flex; gap: 12px; align-items: baseline; padding: 10px 4px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.locked .kicker { min-width: 5.5em; }
+.dlg { display: flex; flex-direction: column; gap: 8px; }
+.ln { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-width: 92%; }
+.ln > div { min-width: 0; overflow-wrap: anywhere; }
+.ln.b { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent-soft); }
+.ln b { color: var(--accent); margin-right: 6px; }
+.ln .cz { display: block; color: var(--muted); font-size: .88rem; }
 .done-note { background: var(--good-soft); color: var(--good); border-radius: 10px; padding: 10px 12px; font-weight: 600; }
 
 /* Plán */

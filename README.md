@@ -8,4 +8,4 @@ s dlouhodobou strategií, swing investicemi i tradingem.
 
 ## Angličtina na 20 minut
 
-Ve složce [`anglictina/`](anglictina/) je interaktivní kurz angličtiny pro začátečníky (14 týdnů po 20 minutách denně). Stačí otevřít `anglictina/index.html`.
+Ve složce [`anglictina/`](anglictina/) je interaktivní roční kurz angličtiny od základů po úroveň B1 až B2 (52 týdnů po 20 minutách denně). Stačí otevřít `anglictina/index.html`.

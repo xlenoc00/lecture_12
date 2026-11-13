@@ -1,9 +1,13 @@
 (function () {
 'use strict';
 const U = window.UNITS;
+const D = U.map((unit, i) => unit.dlg || (window.DIALOGS || [])[i]);
 const KEY = 'anglictina20.v1';
 const IV = [1, 2, 4, 7, 14, 30, 60];          // rozestupy opakování ve dnech podle úrovně kartičky
 const TOTAL = U.length * 7;
+const GOAL = 20;                               // denní cíl v minutách
+const STAGES = [[0, 'Základy', 'A1'], [14, 'Rozjezd', 'A2'], [26, 'Samostatnost', 'B1'], [39, 'Jistota', 'B1+ až B2']].filter(s => s[0] < U.length);
+const stageOf = u => STAGES.filter(s => s[0] <= u).pop();
 const view = document.getElementById('view');
 const tabs = document.getElementById('tabs');
 const SPK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM13 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
@@ -19,16 +23,18 @@ const W = {};
 U.forEach((unit, u) => unit.groups.forEach((g, gi) => g[1].forEach((raw, i) => {
   const [en, cz, pr] = raw.split('|');
   const id = u + '.' + gi + '.' + i;
-  W[id] = { id, en, cz, pr, u, g: gi };
+  W[id] = { id, en, cz, pr: pr || '', u, g: gi };
 })));
 const ALL = Object.values(W);
 const wordsOf = (u, g) => ALL.filter(w => w.u === u && w.g === g);
+const prHtml = pr => pr ? `<div class="pr">${esc(pr)}</div>` : '';
 
 // ---------- stav ----------
-const fresh = () => ({ done: 0, cards: {}, streak: 0, last: -1, tests: {}, rate: 0.85, sessions: 0 });
+const fresh = () => ({ done: 0, cards: {}, miss: {}, log: {}, streak: 0, best: 0, last: -1, tests: {}, rate: 0.85, sessions: 0 });
 let S = fresh();
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(fresh(), JSON.parse(raw)); } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const curStreak = () => S.last >= today() - 1 ? S.streak : 0;
 
 // ---------- hlas ----------
 const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
@@ -40,20 +46,20 @@ function pickVoice() {
   } catch (e) {}
 }
 if (canSpeak) { pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {} }
-function speak(text) {
+function speak(text, slow, keep) {
   if (!canSpeak) return;
   try {
-    speechSynthesis.cancel();
+    if (!keep) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = voice ? voice.lang : 'en-GB';
     if (voice) u.voice = voice;
-    u.rate = S.rate;
+    u.rate = slow ? 0.6 : S.rate;
     speechSynthesis.speak(u);
   } catch (e) {}
 }
 const spkBtn = text => canSpeak ? `<button type="button" class="spk" data-say="${esc(text)}" aria-label="Přehrát výslovnost">${SPK}</button>` : '';
 
-// ---------- opakování ----------
+// ---------- opakování slovíček ----------
 const learned = () => Object.keys(S.cards).map(id => W[id]).filter(Boolean);
 function dueCards(max) {
   const t = today();
@@ -72,29 +78,66 @@ function distract(w, field, n) {
   return out;
 }
 
-// ---------- stavba lekce ----------
-const parseQ = raw => { const p = raw.split('|'); return { k: 'choice', gap: true, prompt: p[0], answer: p[1], options: shuffle(p.slice(1)) }; };
-const parseS = raw => { const p = raw.split('|'); return { en: p[0], cz: p[1] }; };
+// ---------- úlohy ----------
+const qStep = (u, g, i) => { const p = U[u].grammar[g].q[i].split('|'); return { k: 'choice', gap: true, key: 'q' + u + '.' + g + '.' + i, prompt: p[0], answer: p[1], options: shuffle(p.slice(1)) }; };
+const sStep = (u, i, kind) => { const p = U[u].sent[i].split('|'); return { k: kind, key: 's' + u + '.' + i, en: p[0], cz: p[1] }; };
 const wChoice = (w, toEn) => ({ k: 'choice', prompt: toEn ? w.cz : w.en, sub: toEn ? 'Jak se to řekne anglicky?' : 'Co to znamená?', say: toEn ? null : w.en, sayAfter: toEn ? w.en : null,
   answer: toEn ? w.en : w.cz, options: shuffle([toEn ? w.en : w.cz].concat(distract(w, toEn ? 'en' : 'cz', 3))) });
 const typable = w => w.en.length <= 14 && !/[()]/.test(w.en);
 const sec = (name, steps) => steps.map(s => Object.assign(s, { sec: name }));
+const dictOr = () => canSpeak ? 'dict' : 'build';
 
+// chyby z gramatiky a vět, které se vracejí další dny
+function dueMiss(max) {
+  const t = today(), out = [];
+  for (const key of shuffle(Object.keys(S.miss))) {
+    if (S.miss[key].d > t) continue;
+    const p = key.slice(1).split('.').map(Number);
+    let s = null;
+    try { s = key[0] === 'q' ? qStep(p[0], p[1], p[2]) : sStep(p[0], p[1], Math.random() < 0.5 ? 'build' : dictOr()); } catch (e) {}
+    if (!s) { delete S.miss[key]; continue; }
+    s.fromMiss = true; s.kicker = 'Oprava chyby z minula';
+    out.push(s);
+    if (out.length === max) break;
+  }
+  return out;
+}
+function doneSentences(L) {           // věty z lekcí před lekcí L
+  const out = [];
+  for (let u = 0; u < U.length && u * 7 < L; u++) U[u].sent.forEach((x, i) => { if (u * 7 + Math.floor(i / 2) < L) out.push([u, i]); });
+  return out;
+}
+function dialogSteps(u, k) {
+  const raw = D[u] && D[u][k]; if (!raw) return [];
+  const lines = raw.slice(1).map(x => { const p = x.split('|'); return { en: p[0], cz: p[1] }; });
+  const others = [];
+  (D[u] || []).forEach(dl => dl.slice(1).forEach((x, i) => { if (i % 2) others.push(x.split('|')[0]); }));
+  const steps = [{ k: 'dlg', title: raw[0], lines }];
+  const bIdx = lines.map((x, i) => i).filter(i => i % 2);
+  shuffle(bIdx).slice(0, 3).sort((a, b) => a - b).forEach(i => {
+    const wrong = shuffle(others.filter(o => o !== lines[i].en)).slice(0, 2);
+    steps.push({ k: 'choice', prompt: lines[i - 1].en, sub: 'Co na to odpovíš?', say: lines[i - 1].en, answer: lines[i].en, sayAfter: lines[i].en, options: shuffle([lines[i].en].concat(wrong)) });
+  });
+  bIdx.slice(0, 3).forEach(i => steps.push({ k: 'role', a: lines[i - 1], b: lines[i] }));
+  return sec('Rozhovor', steps);
+}
+
+// ---------- stavba lekce ----------
 function buildLesson(L) {
   const u = Math.floor(L / 7), d = L % 7, unit = U[u];
   let steps = [];
-  const due = dueCards(d === 6 ? 30 : 18);
-  steps = steps.concat(sec('Opakování', due.map(w => ({ k: 'flash', w }))));
+  const due = dueCards(d === 6 ? 30 : 15);
+  steps = steps.concat(sec('Opakování', due.map(w => ({ k: 'flash', w })).concat(dueMiss(5))));
 
   if (d === 6) {                                  // sedmý den: týdenní test
     const ws = shuffle(ALL.filter(w => w.u === u));
     const t = [];
     ws.slice(0, 8).forEach(w => t.push(wChoice(w, true)));
-    unit.grammar.forEach(g => shuffle(g.q).slice(0, 2).forEach(q => t.push(parseQ(q))));
-    shuffle(unit.sent).slice(0, 4).forEach(s => t.push(Object.assign({ k: 'build' }, parseS(s))));
+    unit.grammar.forEach((g, gi) => shuffle([0, 1, 2, 3, 4, 5]).slice(0, 2).forEach(qi => t.push(qStep(u, gi, qi))));
+    shuffle(unit.sent.map((x, i) => i)).slice(0, 4).forEach((i, n) => t.push(sStep(u, i, n < 2 ? 'build' : dictOr())));
     ws.filter(typable).slice(8, 11).forEach(w => t.push({ k: 'type', w }));
     t.forEach(s => { s.test = true; });
-    steps.push({ k: 'info', sec: 'Týdenní test', title: 'Týdenní test: ' + unit.t, html: `<p>Čeká tě ${t.length} otázek ze slovíček, gramatiky a vět z celého týdne. Na výsledek 70 % a víc můžeš být hrdý. Když to nevyjde, nic se neděje, lekce si můžeš kdykoli zopakovat v Plánu.</p>` });
+    steps.push({ k: 'info', sec: 'Týdenní test', title: 'Týdenní test: ' + unit.t, html: `<p>Čeká tě ${t.length} otázek ze slovíček, gramatiky a vět z celého týdne. Na výsledek 70 % a víc můžeš být hrdý. Co pokazíš, se ti v dalších dnech vrátí k opravě.</p>` });
     steps = steps.concat(sec('Týdenní test', t));
     return { steps, newWords: [], title: 'Týdenní test' };
   }
@@ -106,61 +149,77 @@ function buildLesson(L) {
     shuffle(half).forEach(w => nw.push(wChoice(w, false)));
   });
   shuffle(ws).forEach(w => nw.push(wChoice(w, true)));
-  shuffle(ws.filter(typable)).slice(0, 4).forEach(w => nw.push({ k: 'type', w }));
+  shuffle(ws.filter(typable)).slice(0, 3).forEach(w => nw.push({ k: 'type', w }));
   steps = steps.concat(sec('Nová slovíčka', nw));
 
-  const g = unit.grammar[Math.floor(d / 2)], second = d % 2 === 1;
+  const gi = Math.floor(d / 2), g = unit.grammar[gi], second = d % 2 === 1;
   const gr = [{ k: 'info', kicker: second ? 'Připomenutí ze včerejška' : 'Nová gramatika', title: g.t, html: g.h }];
-  g.q.slice(second ? 3 : 0, second ? 6 : 3).forEach(q => gr.push(parseQ(q)));
+  for (let i = second ? 3 : 0; i < (second ? 6 : 3); i++) gr.push(qStep(u, gi, i));
   steps = steps.concat(sec('Gramatika', gr));
 
-  const todays = unit.sent.slice(d * 2, d * 2 + 2).map(parseS);
-  const earlier = [];
-  for (let i = 0; i < u; i++) U[i].sent.forEach(s => earlier.push(s));
-  unit.sent.slice(0, d * 2).forEach(s => earlier.push(s));
-  const bs = todays.concat(shuffle(earlier).slice(0, 1).map(parseS)).map(s => Object.assign({ k: 'build' }, s));
+  const dlg = d === 1 ? dialogSteps(u, 0) : (d === 4 ? dialogSteps(u, 1) : []);
+  const earlier = shuffle(doneSentences(L));
+  const bs = [sStep(u, d * 2, 'build'), sStep(u, d * 2 + 1, 'build')];
+  if (!dlg.length && earlier[0]) bs.push(sStep(earlier[0][0], earlier[0][1], 'build'));
   steps = steps.concat(sec('Věty', bs));
 
-  if (canSpeak) steps = steps.concat(sec('Poslech', shuffle(ws).slice(0, 4).map(w => ({ k: 'listen', w, options: shuffle([w.en].concat(distract(w, 'en', 3))) }))));
+  if (canSpeak) {
+    const dc = [sStep(u, d * 2 + (L % 2), 'dict')];
+    if (earlier[1]) dc.push(sStep(earlier[1][0], earlier[1][1], 'dict'));
+    steps = steps.concat(sec('Diktát', dc));
+  }
+  if (dlg.length) { steps = steps.concat(dlg); return { steps, newWords: ws.map(w => w.id), title: unit.t }; }
 
+  if (canSpeak) steps = steps.concat(sec('Poslech', shuffle(ws).slice(0, 3).map(w => ({ k: 'listen', w, options: shuffle([w.en].concat(distract(w, 'en', 3))) }))));
   const pr = [];
   if (d === 0 || d === 3) {
     pr.push({ k: 'info', kicker: 'Výslovnost týdne', title: unit.pron.t, html: unit.pron.h });
     unit.pron.w.forEach(x => { const p = x.split('|'); pr.push({ k: 'say', en: p[0], pr: p[1] }); });
   } else {
-    shuffle(ws).slice(0, 4).forEach(w => pr.push({ k: 'say', en: w.en, pr: w.pr, cz: w.cz }));
+    shuffle(ws).slice(0, 3).forEach(w => pr.push({ k: 'say', en: w.en, pr: w.pr, cz: w.cz }));
+    const p = unit.sent[d * 2].split('|'); pr.push({ k: 'say', en: p[0], cz: p[1] });
   }
-  pr.push({ k: 'say', en: todays[0].en, cz: todays[0].cz });
   steps = steps.concat(sec('Výslovnost', pr));
-
   return { steps, newWords: ws.map(w => w.id), title: unit.t };
+}
+
+function buildQuick() {
+  let cards = dueCards(10);
+  if (!cards.length) cards = shuffle(learned()).slice(0, 8);
+  let steps = sec('Kartičky', cards.map(w => ({ k: 'flash', w })));
+  const more = dueMiss(3), qs = [];
+  U.forEach((unit, u) => unit.grammar.forEach((g, gi) => { if (u * 7 + gi * 2 < S.done) for (let i = 0; i < 6; i++) qs.push([u, gi, i]); }));
+  shuffle(qs).slice(0, Math.max(0, 3 - more.length)).forEach(q => more.push(qStep(q[0], q[1], q[2])));
+  const sn = shuffle(doneSentences(S.done))[0];
+  if (sn) more.push(sStep(sn[0], sn[1], dictOr()));
+  return steps.concat(sec('Rychlé procvičení', more));
 }
 
 // ---------- průběh lekce ----------
 let ses = null;
-function startLesson(L, advance) {
-  const b = buildLesson(L);
-  ses = { steps: b.steps, i: 0, L, advance, newWords: b.newWords, title: b.title, ok: 0, n: 0, tOk: 0, tN: 0, isTest: L % 7 === 6, t0: Date.now() };
+function begin(o) {
+  ses = Object.assign({ i: 0, L: -1, advance: false, newWords: [], ok: 0, n: 0, tOk: 0, tN: 0, act: 0, ts: Date.now() }, o);
+  if (!ses.steps.length) { ses = null; return; }
   document.body.classList.add('insession');
   renderStep();
 }
+function startLesson(L, advance) { const b = buildLesson(L); begin({ steps: b.steps, L, advance, newWords: b.newWords, title: b.title, isTest: L % 7 === 6 }); }
 function startPractice() {
   let cards = dueCards(25);
   if (!cards.length) cards = shuffle(learned()).slice(0, 15);
-  if (!cards.length) return;
-  ses = { steps: sec('Kartičky', cards.map(w => ({ k: 'flash', w }))), i: 0, L: -1, advance: false, newWords: [], title: 'Kartičky', ok: 0, n: 0, tOk: 0, tN: 0, t0: Date.now() };
-  document.body.classList.add('insession');
-  renderStep();
+  begin({ steps: sec('Kartičky', cards.map(w => ({ k: 'flash', w }))), title: 'Kartičky' });
 }
+function startQuick() { begin({ steps: buildQuick(), title: 'Pětiminutovka' }); }
 function endSession() { ses = null; document.body.classList.remove('insession'); if (canSpeak) try { speechSynthesis.cancel(); } catch (e) {} show('dnes'); }
-function next() { ses.i++; renderStep(); }
+function tick() { const now = Date.now(); ses.act += Math.min(now - ses.ts, 90000); ses.ts = now; }   // čas bez dlouhých pauz
+function next() { tick(); ses.i++; renderStep(); }
 
 function frame(inner) {
   const s = ses.steps[ses.i];
   view.innerHTML = `<div class="sbar"><button type="button" class="x" id="quit" aria-label="Ukončit lekci">×</button><div class="prog"><i style="width:${Math.round(ses.i / ses.steps.length * 100)}%"></i></div></div>
   <div class="step"><div class="kicker">${esc(s.kicker || s.sec || '')}</div><div class="body">${inner}</div><div id="foot"></div></div>`;
   document.getElementById('quit').onclick = () => {
-    document.getElementById('foot').innerHTML = `<div class="fb no"><strong>Ukončit lekci?</strong><span>Rozdělaná lekce se neuloží a příště začneš znovu.</span><div class="two"><button type="button" class="btn" id="qn">Pokračovat</button><button type="button" class="btn danger" id="qy">Ukončit</button></div></div>`;
+    document.getElementById('foot').innerHTML = `<div class="fb no"><strong>Ukončit lekci?</strong><span>Rozdělaná lekce se neuloží a do série se nezapočítá.</span><div class="two"><button type="button" class="btn" id="qn">Pokračovat</button><button type="button" class="btn danger" id="qy">Ukončit</button></div></div>`;
     document.getElementById('qy').onclick = endSession;
     document.getElementById('qn').onclick = renderStep;
   };
@@ -170,11 +229,29 @@ const foot = html => { document.getElementById('foot').innerHTML = html; };
 
 function result(ok, correct, cz, sayText) {
   const s = ses.steps[ses.i];
-  if (!s.re) { ses.n++; if (ok) ses.ok++; if (s.test) { ses.tN++; if (ok) ses.tOk++; } }
+  if (!s.re) {
+    ses.n++; if (ok) ses.ok++;
+    if (s.test) { ses.tN++; if (ok) ses.tOk++; }
+    if (s.key) {
+      const m = S.miss[s.key];
+      if (!ok) S.miss[s.key] = { b: 0, d: today() + 1 };
+      else if (m && s.fromMiss) { m.b++; if (m.b >= 3) delete S.miss[s.key]; else m.d = today() + IV[m.b]; }
+      save();
+    }
+  }
   if (!ok && !s.re && !s.test) ses.steps.push(Object.assign({}, s, { re: true, kicker: 'Ještě jednou' }));
   if (sayText) speak(sayText);
   foot(`<div class="fb ${ok ? 'ok' : 'no'}"><strong>${ok ? 'Správně' : 'Správná odpověď'}</strong>${ok && !cz ? '' : `<span><b>${esc(correct)}</b>${cz ? ' – ' + esc(cz) : ''}</span>`}<button type="button" class="btn primary big" data-enter id="nx">Dál</button></div>`);
   const nx = document.getElementById('nx'); nx.onclick = next; nx.focus();
+}
+const optsHtml = options => `<div class="opts">${options.map((o, i) => `<button type="button" class="opt" data-o="${esc(o)}"><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`).join('')}</div>`;
+function bindOpts(answer, done) {
+  view.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+    const ok = b.dataset.o === answer;
+    view.querySelectorAll('.opt').forEach(x => { x.disabled = true; if (x.dataset.o === answer) x.classList.add('right'); });
+    if (!ok) b.classList.add('wrong');
+    done(ok);
+  });
 }
 
 const R = {
@@ -185,14 +262,14 @@ const R = {
   },
   word(s) {
     const w = s.w;
-    frame(`<div class="card wordcard"><span class="kicker">Nové slovíčko</span><div class="en">${esc(w.en)}</div><div class="pr">${esc(w.pr)}</div>${spkBtn(w.en)}<div class="cz">${esc(w.cz)}</div></div><p class="muted small">Poslechni si slovo a řekni ho dvakrát nahlas.</p>`);
+    frame(`<div class="card wordcard"><span class="kicker">Nové slovíčko</span><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}${spkBtn(w.en)}<div class="cz">${esc(w.cz)}</div></div><p class="muted small">Poslechni si slovo a řekni ho dvakrát nahlas.</p>`);
     speak(w.en);
     foot(`<button type="button" class="btn primary big" data-enter id="nx">Dál</button>`);
     document.getElementById('nx').onclick = next;
   },
   flash(s) {
     const w = s.w;
-    frame(`<div class="card wordcard"><span class="kicker">Řekni anglicky</span><div class="cz">${esc(w.cz)}</div><div id="back" hidden class="stack" style="align-items:center"><div class="en">${esc(w.en)}</div><div class="pr">${esc(w.pr)}</div>${spkBtn(w.en)}</div></div>`);
+    frame(`<div class="card wordcard"><span class="kicker">Řekni anglicky</span><div class="cz">${esc(w.cz)}</div><div id="back" hidden class="stack" style="align-items:center"><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}${spkBtn(w.en)}</div></div>`);
     foot(`<button type="button" class="btn primary big" data-enter id="rev">Ukázat odpověď</button>`);
     document.getElementById('rev').onclick = () => {
       document.getElementById('back').hidden = false; speak(w.en);
@@ -204,13 +281,9 @@ const R = {
   },
   choice(s) {
     const p = s.gap ? esc(s.prompt).replace('___', '<span class="gap" id="gap">&nbsp;</span>') : esc(s.prompt);
-    frame(`<p class="muted">${esc(s.sub || 'Doplň správný tvar.')}</p><div class="row"><div class="prompt">${p}</div>${s.say ? spkBtn(s.say) : ''}</div>
-      <div class="opts">${s.options.map((o, i) => `<button type="button" class="opt" data-o="${esc(o)}"><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`).join('')}</div>`);
+    frame(`<p class="muted">${esc(s.sub || 'Doplň správný tvar.')}</p><div class="row"><div class="prompt">${p}</div>${s.say ? spkBtn(s.say) : ''}</div>${optsHtml(s.options)}`);
     if (s.say) speak(s.say);
-    view.querySelectorAll('.opt').forEach(b => b.onclick = () => {
-      const ok = b.dataset.o === s.answer;
-      view.querySelectorAll('.opt').forEach(x => { x.disabled = true; if (x.dataset.o === s.answer) x.classList.add('right'); });
-      if (!ok) b.classList.add('wrong');
+    bindOpts(s.answer, ok => {
       const full = s.gap ? s.prompt.replace('___', s.answer === '–' ? '' : s.answer).replace(/\s*\([^)]*\)/, '').replace(/\s+/g, ' ') : null;
       if (s.gap) document.getElementById('gap').textContent = s.answer;
       result(ok, s.gap ? full : s.answer, null, s.gap ? full : s.sayAfter);
@@ -225,6 +298,19 @@ const R = {
       if (!inp.value.trim()) { inp.focus(); return; }
       inp.disabled = true;
       result(norm(inp.value) === norm(w.en), w.en, w.cz, w.en);
+    };
+  },
+  dict(s) {
+    frame(`<p class="muted">Napiš anglicky větu, kterou slyšíš. Na velkých písmenech a čárkách nezáleží.</p>
+      <div class="row">${spkBtn(s.en)}<button type="button" class="btn" data-say="${esc(s.en)}" data-slow="1">Pomalu</button></div>
+      <input class="answer" id="ans" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Věta, kterou slyšíš">`);
+    speak(s.en);
+    foot(`<button type="button" class="btn primary big" data-enter id="chk">Zkontrolovat</button>`);
+    const inp = document.getElementById('ans'); inp.focus();
+    document.getElementById('chk').onclick = () => {
+      if (!inp.value.trim()) { inp.focus(); return; }
+      inp.disabled = true;
+      result(norm(inp.value) === norm(s.en), s.en, s.cz, null);
     };
   },
   build(s) {
@@ -246,110 +332,145 @@ const R = {
   },
   listen(s) {
     const w = s.w;
-    frame(`<p class="muted">Poslouchej a vyber slovo, které slyšíš.</p><div class="row">${spkBtn(w.en)}<span class="muted small">Přehrát znovu</span></div>
-      <div class="opts">${s.options.map((o, i) => `<button type="button" class="opt" data-o="${esc(o)}"><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`).join('')}</div>`);
+    frame(`<p class="muted">Poslouchej a vyber slovo, které slyšíš.</p><div class="row">${spkBtn(w.en)}<span class="muted small">Přehrát znovu</span></div>${optsHtml(s.options)}`);
     speak(w.en);
-    view.querySelectorAll('.opt').forEach(b => b.onclick = () => {
-      const ok = b.dataset.o === w.en;
-      view.querySelectorAll('.opt').forEach(x => { x.disabled = true; if (x.dataset.o === w.en) x.classList.add('right'); });
-      if (!ok) b.classList.add('wrong');
-      result(ok, w.en, w.cz, w.en);
-    });
+    bindOpts(w.en, ok => result(ok, w.en, w.cz, w.en));
   },
   say(s) {
-    frame(`<p class="muted">${canSpeak ? 'Poslechni si to a zopakuj nahlas. Klidně třikrát.' : 'Přečti to nahlas podle přepisu. Klidně třikrát.'}</p>
-      <div class="card wordcard"><div class="en" style="font-size:${s.en.length > 14 ? '1.5rem' : '2.3rem'}">${esc(s.en)}</div>${s.pr ? `<div class="pr">${esc(s.pr)}</div>` : ''}${spkBtn(s.en)}${s.cz ? `<div class="cz">${esc(s.cz)}</div>` : ''}</div>`);
+    frame(`<p class="muted">${canSpeak ? 'Poslechni si to a zopakuj nahlas. Klidně třikrát.' : 'Přečti to nahlas. Klidně třikrát.'}</p>
+      <div class="card wordcard"><div class="en" style="font-size:${s.en.length > 14 ? '1.5rem' : '2.3rem'}">${esc(s.en)}</div>${prHtml(s.pr)}${spkBtn(s.en)}${s.cz ? `<div class="cz">${esc(s.cz)}</div>` : ''}</div>`);
     speak(s.en);
     foot(`<button type="button" class="btn primary big" data-enter id="nx">Řekl jsem to nahlas</button>`);
     document.getElementById('nx').onclick = next;
+  },
+  dlg(s) {
+    frame(`<h1>${esc(s.title)}</h1><p class="muted">Přečti si rozhovor a poslechni si ho. Potom budeš odpovídat sám.</p>
+      <div class="dlg">${s.lines.map((x, i) => `<div class="ln ${i % 2 ? 'b' : 'a'}"><div><b>${i % 2 ? 'B' : 'A'}</b> ${esc(x.en)}<span class="cz">${esc(x.cz)}</span></div>${spkBtn(x.en)}</div>`).join('')}</div>
+      ${canSpeak ? '<button type="button" class="btn" id="all">Přehrát celý rozhovor</button>' : ''}`);
+    const all = document.getElementById('all');
+    if (all) all.onclick = () => s.lines.forEach((x, i) => speak(x.en, false, i > 0));
+    foot(`<button type="button" class="btn primary big" data-enter id="nx">Pokračovat</button>`);
+    document.getElementById('nx').onclick = next;
+  },
+  role(s) {
+    frame(`<p class="muted">Hraješ roli B. Odpověz nahlas anglicky a potom si odpověď zkontroluj.</p>
+      <div class="dlg"><div class="ln a"><div><b>A</b> ${esc(s.a.en)}<span class="cz">${esc(s.a.cz)}</span></div>${spkBtn(s.a.en)}</div></div>
+      <div class="prompt">${esc(s.b.cz)}</div>
+      <div id="back" hidden class="dlg"><div class="ln b"><div><b>B</b> ${esc(s.b.en)}</div>${spkBtn(s.b.en)}</div></div>`);
+    speak(s.a.en);
+    foot(`<button type="button" class="btn primary big" data-enter id="rev">Ukázat odpověď</button>`);
+    document.getElementById('rev').onclick = () => {
+      document.getElementById('back').hidden = false; speak(s.b.en);
+      foot(`<button type="button" class="btn primary big" data-enter id="nx">Dál</button>`);
+      document.getElementById('nx').onclick = next;
+    };
   }
 };
 
 function renderStep() {
   const s = ses.steps[ses.i];
   if (!s) return finish();
+  ses.ts = Date.now();
   R[s.k](s);
 }
 
 function finish() {
   const t = today();
   const pct = ses.n ? Math.round(ses.ok / ses.n * 100) : 100;
-  const mins = Math.max(1, Math.round((Date.now() - ses.t0) / 6e4));
+  const mins = Math.max(1, Math.round(ses.act / 6e4));
   let testPct = null;
   if (ses.isTest && ses.tN) { testPct = Math.round(ses.tOk / ses.tN * 100); const u = Math.floor(ses.L / 7); S.tests[u] = Math.max(S.tests[u] || 0, testPct); }
   ses.newWords.forEach(id => { if (!S.cards[id]) S.cards[id] = { b: 0, d: t + 1 }; });
-  if (ses.advance && ses.L === S.done) S.done = Math.min(TOTAL, S.done + 1);
+  const advanced = ses.advance && ses.L === S.done;
+  if (advanced) S.done = Math.min(TOTAL, S.done + 1);
   if (S.last !== t) { S.streak = S.last === t - 1 ? S.streak + 1 : 1; S.last = t; }
+  S.best = Math.max(S.best || 0, S.streak);
+  S.log[t] = (S.log[t] || 0) + mins;
   S.sessions++;
   save();
-  const head = testPct !== null ? (testPct >= 70 ? 'Týden zvládnutý' : 'Test dokončen') : 'Hotovo na dnešek';
-  const newN = ses.advance ? ses.newWords.length : 0;
+  const head = testPct !== null ? (testPct >= 70 ? 'Týden zvládnutý' : 'Test dokončen') : (S.log[t] >= GOAL ? 'Hotovo na dnešek' : 'Hotovo');
+  const more = advanced && S.done < TOTAL;
   view.innerHTML = `<div class="step" style="padding-top:32px"><div class="body">
     <div class="kicker">${esc(ses.title)}</div><h1>${head}</h1>
     <div class="score">${testPct !== null ? testPct : pct} %</div>
     <p class="muted">${testPct !== null ? 'výsledek týdenního testu' : 'správných odpovědí napoprvé'}</p>
-    <div class="stats"><div class="stat"><strong>${mins}</strong><span>${plural(mins, 'minuta', 'minuty', 'minut')}</span></div><div class="stat"><strong>${newN}</strong><span>nových slovíček</span></div><div class="stat"><strong>${S.streak}</strong><span>${plural(S.streak, 'den', 'dny', 'dní')} v řadě</span></div></div>
+    <div class="stats"><div class="stat"><strong>${S.log[t]}</strong><span>${plural(S.log[t], 'minuta', 'minuty', 'minut')} dnes</span></div><div class="stat"><strong>${advanced ? ses.newWords.length : 0}</strong><span>nových slovíček</span></div><div class="stat"><strong>${S.streak}</strong><span>${plural(S.streak, 'den', 'dny', 'dní')} v řadě</span></div></div>
     ${testPct !== null && testPct < 70 ? '<p>Pod 70 % doporučuju vrátit se v Plánu k lekcím, které ti dělaly potíže. Další týden je ale odemčený.</p>' : ''}
-    ${S.done >= TOTAL && ses.advance ? '<p><b>Dokončil jsi celý kurz.</b> Kartičky ti dál budou připomínat slovíčka, aby ti zůstala v hlavě.</p>' : ''}
-    </div><button type="button" class="btn primary big" data-enter id="home">Zpět na přehled</button></div>`;
+    ${S.done >= TOTAL && advanced ? '<p><b>Dokončil jsi celý kurz.</b> Kartičky ti dál budou připomínat slovíčka, aby ti zůstala v hlavě.</p>' : ''}
+    </div><div class="stack"><button type="button" class="btn primary big" data-enter id="home">${more ? 'Stačí, zpět na přehled' : 'Zpět na přehled'}</button>
+    ${more ? '<button type="button" class="btn big" id="more">Chytlo mě to, další lekce</button>' : ''}</div></div>`;
   document.getElementById('home').onclick = endSession;
+  const mb = document.getElementById('more'); if (mb) mb.onclick = () => startLesson(S.done, true);
 }
 
 // ---------- obrazovky ----------
 const V = {
   dnes() {
-    const L = Math.min(S.done, TOTAL - 1), u = Math.floor(L / 7), d = L % 7, unit = U[u];
-    const due = dueCards(999).length, n = learned().length, strong = learned().filter(w => S.cards[w.id].b >= 4).length;
-    const finished = S.done >= TOTAL, doneToday = S.last === today() && S.done > 0;
+    const t = today();
+    const L = Math.min(S.done, TOTAL - 1), u = Math.floor(L / 7), d = L % 7, unit = U[u], st = stageOf(u);
+    const due = dueCards(9999).length, n = learned().length;
+    const fixes = Object.keys(S.miss).filter(k => S.miss[k].d <= t).length;
+    const finished = S.done >= TOTAL, doneToday = S.last === t && S.done > 0;
     const g = unit.grammar[Math.floor(Math.min(d, 5) / 2)];
+    const rev = `${Math.min(due, 15)} ${plural(Math.min(due, 15), 'kartička', 'kartičky', 'kartiček')}${fixes ? ' a ' + Math.min(fixes, 5) + ' ' + plural(Math.min(fixes, 5), 'chyba', 'chyby', 'chyb') + ' k opravě' : ''}`;
     const items = d === 6
       ? `<li><b>Test</b><span>21 otázek z celého týdne</span></li><li><b>Opakování</b><span>${due} ${plural(due, 'kartička', 'kartičky', 'kartiček')}</span></li>`
-      : `<li><b>Opakování</b><span>${Math.min(due, 18)} ${plural(Math.min(due, 18), 'kartička', 'kartičky', 'kartiček')} z minulých dní</span></li>
+      : `<li><b>Opakování</b><span>${rev}</span></li>
          <li><b>Slovíčka</b><span>8 nových: ${esc(unit.groups[d][0])}</span></li>
          <li><b>Gramatika</b><span>${esc(g.t)}</span></li>
-         <li><b>Věty</b><span>skládání vět ze slov</span></li>
-         <li><b>Výslovnost</b><span>${d === 0 || d === 3 ? esc(unit.pron.t) : 'poslech a opakování nahlas'}</span></li>`;
-    let cols = '';
-    for (let w = 0; w < U.length; w++) {
-      let c = '';
-      for (let x = 0; x < 7; x++) { const i = w * 7 + x; c += `<i class="${i < S.done ? 'done' : (i === S.done ? 'now' : '')}"></i>`; }
-      cols += `<div class="col">${c}<small>${w + 1}</small></div>`;
-    }
+         <li><b>Věty</b><span>skládání a diktát</span></li>
+         ${(d === 1 || d === 4) && D[u] && D[u][d === 1 ? 0 : 1] ? `<li><b>Rozhovor</b><span>${esc(D[u][d === 1 ? 0 : 1][0])}</span></li>` : `<li><b>Výslovnost</b><span>${d === 0 || d === 3 ? esc(unit.pron.t) : 'poslech a opakování nahlas'}</span></li>`}`;
+    let cells = '';
+    for (let w = 0; w < U.length; w++) cells += `<i class="${(w + 1) * 7 <= S.done ? 'done' : (w === Math.floor(S.done / 7) ? 'now' : '')}" title="Týden ${w + 1}"></i>`;
+    let cal = '', week = 0, total = 0, days = 0;
+    for (let i = 27; i >= 0; i--) { const m = S.log[t - i] || 0; cal += `<i class="${m >= GOAL ? 'done' : (m ? 'some' : '')}${i === 0 ? ' today' : ''}" title="${m} min"></i>`; if (i < 7 && m) week++; }
+    Object.keys(S.log).forEach(k => { total += S.log[k]; days++; });
+    const mt = S.log[t] || 0, streak = curStreak();
+    const broken = S.last >= 0 && S.last < t - 1;
     view.innerHTML = `
       <section class="card">
         ${finished ? `<div class="kicker">Kurz dokončen</div><h1>Všech ${TOTAL} lekcí máš za sebou</h1><p>Opakuj kartičky, dokud se ti budou nabízet. Lekce si můžeš projít znovu v Plánu.</p>`
-        : `<div class="kicker">Týden ${u + 1} · den ${d + 1} · lekce ${L + 1} z ${TOTAL}</div><h1>${esc(unit.t)}</h1><p class="muted">${esc(unit.s)}</p><ul class="today-list">${items}</ul>`}
-        ${doneToday && !finished ? '<p class="done-note">Dnešní lekce je hotová. Další tě čeká zítra.</p>' : ''}
-        ${finished || doneToday
-          ? `<button type="button" class="btn primary big" id="practice" ${n ? '' : 'disabled'}>Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>${finished ? '' : '<button type="button" class="btn quiet" id="go">Udělat další lekci už dnes</button>'}`
-          : `<button type="button" class="btn primary big" id="go">${S.done === 0 ? 'Začít první lekci' : 'Začít dnešních 20 minut'}</button>`}
+        : `<div class="kicker">Týden ${u + 1} z ${U.length} · den ${d + 1} · úroveň ${st[2]}</div><h1>${esc(unit.t)}</h1><p class="muted">${esc(unit.s)}</p><ul class="today-list">${items}</ul>`}
+        ${doneToday && !finished ? `<p class="done-note">Dnešní lekce je hotová${mt >= GOAL ? ' a denní cíl splněný' : ''}. Když tě to chytlo, pokračuj další.</p>` : ''}
+        ${broken && !doneToday ? `<p class="warn-note">Naposledy jsi tu byl před ${t - S.last} dny. Série se vynulovala, dnes začíná nová.</p>` : ''}
+        ${finished ? `<button type="button" class="btn primary big" id="practice" ${n ? '' : 'disabled'}>Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
+          : doneToday ? `<button type="button" class="btn primary big" id="go">Pokračovat další lekcí</button><button type="button" class="btn big" id="practice">Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
+          : `<button type="button" class="btn primary big" id="go">${S.done === 0 ? 'Začít první lekci' : 'Začít dnešních 20 minut'}</button>${S.done > 0 ? '<button type="button" class="btn quiet" id="quick">Dnes mám jen 5 minut</button>' : ''}`}
       </section>
-      <section class="stats">
-        <div class="stat"><strong>${S.streak}</strong><span>${plural(S.streak, 'den', 'dny', 'dní')} v řadě</span></div>
-        <div class="stat"><strong>${n}</strong><span>slovíček v kartičkách</span></div>
-        <div class="stat"><strong>${strong}</strong><span>z nich umíš jistě</span></div>
+      <section class="card">
+        <div class="row spread"><h2>Docházka</h2><span class="muted small">dnes ${mt} z ${GOAL} minut</span></div>
+        <div class="prog"><i style="width:${Math.min(100, Math.round(mt / GOAL * 100))}%"></i></div>
+        <div class="stats"><div class="stat"><strong>${streak}</strong><span>${plural(streak, 'den', 'dny', 'dní')} v řadě</span></div>
+        <div class="stat"><strong>${week}/7</strong><span>dní za poslední týden</span></div>
+        <div class="stat"><strong>${S.best || 0}</strong><span>nejdelší série</span></div></div>
+        <div class="cal">${cal}</div>
+        <p class="muted small">Posledních 28 dní, dnešek je vpravo dole. Plné políčko znamená aspoň ${GOAL} minut, světlé kratší učení, šedé vynechaný den. Celkem ${days} ${plural(days, 'den', 'dny', 'dní')} a ${total >= 120 ? Math.round(total / 60) + ' hodin' : total + ' minut'} učení. Počítá se jen čas, kdy opravdu odpovídáš, a jen dokončené lekce.</p>
       </section>
-      <section class="card"><div class="row spread"><h2>14 týdnů</h2><span class="muted small">${S.done} z ${TOTAL} lekcí</span></div><div class="weeks">${cols}</div>
-        <p class="muted small">Každý sloupec je jeden týden: šest lekcí a sedmý den test. Žluté políčko je lekce, která tě čeká.</p></section>
-      ${!canSpeak ? '<p class="muted small">Tento prohlížeč neumí číst anglický text nahlas. Výslovnost uvidíš v českém přepisu; poslech funguje v Chromu, Edge a Safari.</p>' : ''}`;
-    const go = document.getElementById('go'); if (go) go.onclick = () => startLesson(S.done, true);
-    const pr = document.getElementById('practice'); if (pr) pr.onclick = startPractice;
+      <section class="card"><div class="row spread"><h2>Rok angličtiny</h2><span class="muted small">${S.done} z ${TOTAL} lekcí · ${n} slovíček</span></div><div class="year">${cells}</div>
+        <p class="muted small">Jedno políčko je jeden týden. Úrovně: ${STAGES.map(s => `od ${s[0] + 1}. týdne ${s[1].toLowerCase()} (${s[2]})`).join(', ')}.</p></section>
+      ${!canSpeak ? '<p class="muted small">Tento prohlížeč neumí číst anglický text nahlas, takže diktát a poslech se přeskočí. Hlas funguje v Chromu, Edge a Safari.</p>' : ''}`;
+    const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
+    on('go', () => startLesson(S.done, true)); on('practice', startPractice); on('quick', startQuick);
   },
   plan() {
-    view.innerHTML = `<h1>Plán kurzu</h1><p class="muted">Hotové lekce si můžeš kliknutím zopakovat. Písmeno T je týdenní test.</p>` + U.map((unit, u) => {
+    const cur = Math.floor(S.done / 7);
+    view.innerHTML = `<h1>Plán kurzu</h1><p class="muted">${U.length} týdnů po šesti lekcích a testu (T). Hotové lekce si můžeš kliknutím zopakovat.</p>` + U.map((unit, u) => {
+      const st = STAGES.find(s => s[0] === u);
+      const head = st ? `<h3 class="unit">Od ${u + 1}. týdne · ${st[1]} · úroveň ${st[2]}</h3>` : '';
+      if (u > cur) return head + `<div class="locked"><span class="kicker">Týden ${u + 1}</span><span>${esc(unit.t)}</span></div>`;
       let days = '';
       for (let d = 0; d < 7; d++) {
         const i = u * 7 + d, cls = i < S.done ? 'done' : (i === S.done ? 'now' : '');
         days += `<button type="button" class="${cls}" data-l="${i}" ${i > S.done ? 'disabled' : ''} aria-label="Týden ${u + 1}, ${d === 6 ? 'test' : 'den ' + (d + 1)}">${d === 6 ? 'T' : d + 1}</button>`;
       }
-      return `<section class="card"><div class="row spread"><span class="kicker">Týden ${u + 1}</span>${S.tests[u] != null ? `<span class="lvl ${S.tests[u] >= 70 ? 'ok' : ''}">test ${S.tests[u]} %</span>` : ''}</div>
+      return head + `<section class="card"><div class="row spread"><span class="kicker">Týden ${u + 1}</span>${S.tests[u] != null ? `<span class="lvl ${S.tests[u] >= 70 ? 'ok' : ''}">test ${S.tests[u]} %</span>` : ''}</div>
         <h2>${esc(unit.t)}</h2><p class="muted small">${unit.grammar.map(g => esc(g.t)).join(' · ')}</p><div class="days">${days}</div></section>`;
     }).join('');
     view.querySelectorAll('.days button').forEach(b => b.onclick = () => { const i = +b.dataset.l; startLesson(i, i === S.done); });
   },
   slovicka() {
     const ws = learned().sort((a, b) => a.en.toLowerCase() < b.en.toLowerCase() ? -1 : 1);
-    const due = dueCards(999).length;
+    const due = dueCards(9999).length;
     view.innerHTML = `<h1>Slovíčka</h1>` + (ws.length ? `
       <p class="muted">Máš ${ws.length} ${plural(ws.length, 'slovíčko', 'slovíčka', 'slovíček')}. Kartičky se vracejí za 1, 2, 4, 7, 14, 30 a 60 dní, vždy když je znáš. Když ne, začínají znovu.</p>
       <button type="button" class="btn primary big" id="practice">Procvičit kartičky${due ? ' (' + due + ' k opakování)' : ''}</button>
@@ -359,10 +480,11 @@ const V = {
     const list = document.getElementById('wl');
     const draw = f => {
       f = f.toLowerCase();
-      list.innerHTML = ws.filter(w => !f || w.en.toLowerCase().includes(f) || w.cz.toLowerCase().includes(f)).map(w => {
+      const hit = ws.filter(w => !f || w.en.toLowerCase().includes(f) || w.cz.toLowerCase().includes(f));
+      list.innerHTML = hit.slice(0, 200).map(w => {
         const b = S.cards[w.id].b;
-        return `<li>${spkBtn(w.en) || '<span></span>'}<span class="en">${esc(w.en)} <span class="muted small">[${esc(w.pr)}]</span></span><span class="lvl ${b >= 4 ? 'ok' : ''}">${b >= 4 ? 'umím' : (b >= 1 ? 'učím se' : 'nové')}</span><span class="cz">${esc(w.cz)}</span></li>`;
-      }).join('') || '<li><span></span><span class="muted">Nic nenalezeno.</span></li>';
+        return `<li>${spkBtn(w.en) || '<span></span>'}<span class="en">${esc(w.en)}${w.pr ? ` <span class="muted small">[${esc(w.pr)}]</span>` : ''}</span><span class="lvl ${b >= 4 ? 'ok' : ''}">${b >= 4 ? 'umím' : (b >= 1 ? 'učím se' : 'nové')}</span><span class="cz">${esc(w.cz)}</span></li>`;
+      }).join('') + (hit.length > 200 ? `<li><span></span><span class="muted">a dalších ${hit.length - 200}. Zúž hledání.</span></li>` : '') || '<li><span></span><span class="muted">Nic nenalezeno.</span></li>';
     };
     draw('');
     document.getElementById('q').oninput = e => draw(e.target.value);
@@ -385,7 +507,7 @@ const V = {
       <section class="card"><h2>Přenos postupu na jiné zařízení</h2><p class="muted small">Postup se ukládá jen v tomto prohlížeči. Chceš-li pokračovat jinde, zkopíruj kód sem a vlož ho v nastavení na druhém zařízení. Kód si občas ulož i jako zálohu.</p>
         <textarea class="code" id="exp" readonly aria-label="Kód s tvým postupem">${esc(code)}</textarea><button type="button" class="btn" id="copy">Zkopírovat kód</button>
         <textarea class="code" id="imp" placeholder="Sem vlož kód z druhého zařízení" aria-label="Kód k načtení"></textarea><button type="button" class="btn" id="load">Načíst postup z kódu</button><p class="small" id="msg" role="status"></p></section>
-      <section class="card"><h2>Začít od začátku</h2><p class="muted small">Smaže všechny lekce i kartičky v tomto prohlížeči.</p><div id="rs"><button type="button" class="btn danger" id="reset">Smazat postup</button></div></section>`;
+      <section class="card"><h2>Začít od začátku</h2><p class="muted small">Smaže všechny lekce, kartičky i docházku v tomto prohlížeči.</p><div id="rs"><button type="button" class="btn danger" id="reset">Smazat postup</button></div></section>`;
     const rate = document.getElementById('rate'); rate.value = String(S.rate);
     rate.onchange = () => { S.rate = +rate.value; save(); speak('Hello, how are you today?'); };
     const msg = document.getElementById('msg'), exp = document.getElementById('exp');
@@ -415,7 +537,7 @@ function show(tab) {
   window.scrollTo(0, 0);
 }
 tabs.addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) show(b.dataset.tab); });
-document.addEventListener('click', e => { const b = e.target.closest('[data-say]'); if (b) speak(b.dataset.say); });
+document.addEventListener('click', e => { const b = e.target.closest('[data-say]'); if (b) speak(b.dataset.say, !!b.dataset.slow); });
 document.addEventListener('keydown', e => {
   if (!ses) return;
   if (e.key === 'Enter') {
