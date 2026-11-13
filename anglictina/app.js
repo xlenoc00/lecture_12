@@ -30,10 +30,23 @@ const wordsOf = (u, g) => ALL.filter(w => w.u === u && w.g === g);
 const prHtml = pr => pr ? `<div class="pr">${esc(pr)}</div>` : '';
 
 // ---------- stav ----------
-const fresh = () => ({ done: 0, cards: {}, miss: {}, log: {}, streak: 0, best: 0, last: -1, tests: {}, rate: 0.85, sessions: 0 });
+const fresh = () => ({ done: 0, cards: {}, miss: {}, log: {}, streak: 0, best: 0, last: -1, tests: {}, rate: 0.7, sessions: 0, fs: 0, noType: false, intro: 0 });
 let S = fresh();
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(fresh(), JSON.parse(raw)); } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+if (S.done > 0) S.intro = 1;
+const applyFs = () => { document.documentElement.dataset.fs = S.fs || 0; };
+applyFs();
+const SES = KEY + '.ses';                     // rozdělaná lekce, aby šla přerušit a dokončit později
+const saveSes = () => { try { localStorage.setItem(SES, JSON.stringify(ses)); } catch (e) {} };
+const clearSes = () => { try { localStorage.removeItem(SES); } catch (e) {} };
+function loadSes() {
+  try {
+    const o = JSON.parse(localStorage.getItem(SES));
+    if (!o || !Array.isArray(o.steps) || o.i >= o.steps.length || (o.advance && o.L !== S.done)) { if (o) clearSes(); return null; }
+    return o;
+  } catch (e) { return null; }
+}
 const curStreak = () => S.last >= today() - 1 ? S.streak : 0;
 
 // ---------- hlas ----------
@@ -53,9 +66,14 @@ function speak(text, slow, keep) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = voice ? voice.lang : 'en-GB';
     if (voice) u.voice = voice;
-    u.rate = slow ? 0.6 : S.rate;
+    u.rate = slow ? 0.55 : S.rate;
     speechSynthesis.speak(u);
   } catch (e) {}
+}
+const playRow = text => canSpeak ? `<div class="row playrow"><button type="button" class="btn play" data-say="${esc(text)}">${SPK}<span>Přehrát</span></button><button type="button" class="btn" data-say="${esc(text)}" data-slow="1">Pomalu</button></div>` : '';
+const fsButtons = () => `<div class="seg" id="fs">${['Běžné', 'Větší', 'Největší'].map((l, i) => `<button type="button" class="btn" data-fs="${i}" aria-pressed="${(S.fs || 0) === i}">${l}</button>`).join('')}</div>`;
+function bindFs(after) {
+  document.querySelectorAll('#fs button').forEach(b => b.onclick = () => { S.fs = +b.dataset.fs; save(); applyFs(); after(); });
 }
 const spkBtn = text => canSpeak ? `<button type="button" class="spk" data-say="${esc(text)}" aria-label="Přehrát výslovnost">${SPK}</button>` : '';
 
@@ -203,6 +221,7 @@ function begin(o) {
   document.body.classList.add('insession');
   renderStep();
 }
+function resume(o) { ses = o; document.body.classList.add('insession'); renderStep(); }
 function startLesson(L, advance) { const b = buildLesson(L); begin({ steps: b.steps, L, advance, newWords: b.newWords, title: b.title, isTest: L % 7 === 6 }); }
 function startPractice() {
   let cards = dueCards(25);
@@ -215,11 +234,13 @@ function tick() { const now = Date.now(); ses.act += Math.min(now - ses.ts, 9000
 function next() { tick(); ses.i++; renderStep(); }
 
 function frame(inner) {
-  const s = ses.steps[ses.i];
-  view.innerHTML = `<div class="sbar"><button type="button" class="x" id="quit" aria-label="Ukončit lekci">×</button><div class="prog"><i style="width:${Math.round(ses.i / ses.steps.length * 100)}%"></i></div></div>
+  const s = ses.steps[ses.i], left = ses.steps.length - ses.i;
+  const mins = Math.max(1, Math.round(left * 18 / 60));
+  view.innerHTML = `<div class="sbar"><div class="line1"><button type="button" class="x" id="quit">Přerušit</button><div class="prog"><i style="width:${Math.round(ses.i / ses.steps.length * 100)}%"></i></div></div>
+    <div class="muted small">Krok ${ses.i + 1} z ${ses.steps.length} · zbývá asi ${mins} ${plural(mins, 'minuta', 'minuty', 'minut')}</div></div>
   <div class="step"><div class="kicker">${esc(s.kicker || s.sec || '')}</div><div class="body">${inner}</div><div id="foot"></div></div>`;
   document.getElementById('quit').onclick = () => {
-    document.getElementById('foot').innerHTML = `<div class="fb no"><strong>Ukončit lekci?</strong><span>Rozdělaná lekce se neuloží a do série se nezapočítá.</span><div class="two"><button type="button" class="btn" id="qn">Pokračovat</button><button type="button" class="btn danger" id="qy">Ukončit</button></div></div>`;
+    document.getElementById('foot').innerHTML = `<div class="fb ok"><strong>Přerušit lekci?</strong><span>Lekce se uloží. Až se vrátíš, budeš pokračovat přesně odsud.</span><div class="two"><button type="button" class="btn" id="qn">Zůstat v lekci</button><button type="button" class="btn primary" id="qy">Přerušit</button></div></div>`;
     document.getElementById('qy').onclick = endSession;
     document.getElementById('qn').onclick = renderStep;
   };
@@ -241,7 +262,7 @@ function result(ok, correct, cz, sayText) {
   }
   if (!ok && !s.re && !s.test) ses.steps.push(Object.assign({}, s, { re: true, kicker: 'Ještě jednou' }));
   if (sayText) speak(sayText);
-  foot(`<div class="fb ${ok ? 'ok' : 'no'}"><strong>${ok ? 'Správně' : 'Správná odpověď'}</strong>${ok && !cz ? '' : `<span><b>${esc(correct)}</b>${cz ? ' – ' + esc(cz) : ''}</span>`}<button type="button" class="btn primary big" data-enter id="nx">Dál</button></div>`);
+  foot(`<div class="fb ${ok ? 'ok' : 'no'}"><strong>${ok ? 'Správně' : 'Skoro. Správně je:'}</strong>${ok && !cz ? '' : `<span><b>${esc(correct)}</b>${cz ? ' – ' + esc(cz) : ''}</span>`}<button type="button" class="btn primary big" data-enter id="nx">Dál</button></div>`);
   const nx = document.getElementById('nx'); nx.onclick = next; nx.focus();
 }
 const optsHtml = options => `<div class="opts">${options.map((o, i) => `<button type="button" class="opt" data-o="${esc(o)}"><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`).join('')}</div>`;
@@ -262,14 +283,14 @@ const R = {
   },
   word(s) {
     const w = s.w;
-    frame(`<div class="card wordcard"><span class="kicker">Nové slovíčko</span><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}${spkBtn(w.en)}<div class="cz">${esc(w.cz)}</div></div><p class="muted small">Poslechni si slovo a řekni ho dvakrát nahlas.</p>`);
+    frame(`<div class="card wordcard"><span class="kicker">Nové slovíčko</span><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}<div class="cz">${esc(w.cz)}</div>${playRow(w.en)}</div><p class="muted small">Poslechni si slovo a řekni ho dvakrát nahlas.</p>`);
     speak(w.en);
     foot(`<button type="button" class="btn primary big" data-enter id="nx">Dál</button>`);
     document.getElementById('nx').onclick = next;
   },
   flash(s) {
     const w = s.w;
-    frame(`<div class="card wordcard"><span class="kicker">Řekni anglicky</span><div class="cz">${esc(w.cz)}</div><div id="back" hidden class="stack" style="align-items:center"><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}${spkBtn(w.en)}</div></div>`);
+    frame(`<div class="card wordcard"><span class="kicker">Řekni anglicky</span><div class="cz">${esc(w.cz)}</div><div id="back" hidden class="stack" style="align-items:center"><div class="en">${esc(w.en)}</div>${prHtml(w.pr)}${playRow(w.en)}</div></div>`);
     foot(`<button type="button" class="btn primary big" data-enter id="rev">Ukázat odpověď</button>`);
     document.getElementById('rev').onclick = () => {
       document.getElementById('back').hidden = false; speak(w.en);
@@ -281,7 +302,7 @@ const R = {
   },
   choice(s) {
     const p = s.gap ? esc(s.prompt).replace('___', '<span class="gap" id="gap">&nbsp;</span>') : esc(s.prompt);
-    frame(`<p class="muted">${esc(s.sub || 'Doplň správný tvar.')}</p><div class="row"><div class="prompt">${p}</div>${s.say ? spkBtn(s.say) : ''}</div>${optsHtml(s.options)}`);
+    frame(`<p class="muted">${esc(s.sub || 'Doplň správný tvar.')}</p><div class="prompt">${p}</div>${s.say ? playRow(s.say) : ''}${optsHtml(s.options)}`);
     if (s.say) speak(s.say);
     bindOpts(s.answer, ok => {
       const full = s.gap ? s.prompt.replace('___', s.answer === '–' ? '' : s.answer).replace(/\s*\([^)]*\)/, '').replace(/\s+/g, ' ') : null;
@@ -302,7 +323,7 @@ const R = {
   },
   dict(s) {
     frame(`<p class="muted">Napiš anglicky větu, kterou slyšíš. Na velkých písmenech a čárkách nezáleží.</p>
-      <div class="row">${spkBtn(s.en)}<button type="button" class="btn" data-say="${esc(s.en)}" data-slow="1">Pomalu</button></div>
+      ${playRow(s.en)}
       <input class="answer" id="ans" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Věta, kterou slyšíš">`);
     speak(s.en);
     foot(`<button type="button" class="btn primary big" data-enter id="chk">Zkontrolovat</button>`);
@@ -313,9 +334,10 @@ const R = {
       result(norm(inp.value) === norm(s.en), s.en, s.cz, null);
     };
   },
-  build(s) {
+  build(s, heard) {
     const tiles = shuffle(s.en.split(' ').map((t, i) => ({ t, i })));
-    frame(`<p class="muted">Poskládej větu anglicky.</p><div class="prompt">${esc(s.cz)}</div><div class="line" id="line"></div><div class="bank" id="bank">${tiles.map(x => `<button type="button" class="tile" data-i="${x.i}">${esc(x.t)}</button>`).join('')}</div>`);
+    frame(`<p class="muted">${heard ? 'Poskládej větu, kterou slyšíš.' : 'Poskládej větu anglicky.'}</p>${heard ? playRow(s.en) : `<div class="prompt">${esc(s.cz)}</div>`}<div class="line" id="line"></div><div class="bank" id="bank">${tiles.map(x => `<button type="button" class="tile" data-i="${x.i}">${esc(x.t)}</button>`).join('')}</div>`);
+    if (heard) speak(s.en);
     foot(`<button type="button" class="btn primary big" data-enter id="chk" disabled>Zkontrolovat</button>`);
     const line = document.getElementById('line'), bank = document.getElementById('bank'), chk = document.getElementById('chk');
     let locked = false;
@@ -327,18 +349,18 @@ const R = {
     chk.onclick = () => {
       locked = true;
       const got = Array.from(line.children).map(b => b.textContent).join(' ');
-      result(norm(got) === norm(s.en), s.en, null, s.en);
+      result(norm(got) === norm(s.en), s.en, heard ? s.cz : null, heard ? null : s.en);
     };
   },
   listen(s) {
     const w = s.w;
-    frame(`<p class="muted">Poslouchej a vyber slovo, které slyšíš.</p><div class="row">${spkBtn(w.en)}<span class="muted small">Přehrát znovu</span></div>${optsHtml(s.options)}`);
+    frame(`<p class="muted">Poslouchej a vyber slovo, které slyšíš.</p>${playRow(w.en)}${optsHtml(s.options)}`);
     speak(w.en);
     bindOpts(w.en, ok => result(ok, w.en, w.cz, w.en));
   },
   say(s) {
     frame(`<p class="muted">${canSpeak ? 'Poslechni si to a zopakuj nahlas. Klidně třikrát.' : 'Přečti to nahlas. Klidně třikrát.'}</p>
-      <div class="card wordcard"><div class="en" style="font-size:${s.en.length > 14 ? '1.5rem' : '2.3rem'}">${esc(s.en)}</div>${prHtml(s.pr)}${spkBtn(s.en)}${s.cz ? `<div class="cz">${esc(s.cz)}</div>` : ''}</div>`);
+      <div class="card wordcard"><div class="en" style="font-size:${s.en.length > 14 ? '1.5rem' : '2.3rem'}">${esc(s.en)}</div>${prHtml(s.pr)}${s.cz ? `<div class="cz">${esc(s.cz)}</div>` : ''}${playRow(s.en)}</div>`);
     speak(s.en);
     foot(`<button type="button" class="btn primary big" data-enter id="nx">Řekl jsem to nahlas</button>`);
     document.getElementById('nx').onclick = next;
@@ -371,6 +393,9 @@ function renderStep() {
   const s = ses.steps[ses.i];
   if (!s) return finish();
   ses.ts = Date.now();
+  saveSes();
+  if (S.noType && s.k === 'type') Object.assign(s, wChoice(s.w, true));
+  if (S.noType && s.k === 'dict') return R.build(s, true);
   R[s.k](s);
 }
 
@@ -388,6 +413,7 @@ function finish() {
   S.log[t] = (S.log[t] || 0) + mins;
   S.sessions++;
   save();
+  clearSes();
   const head = testPct !== null ? (testPct >= 70 ? 'Týden zvládnutý' : 'Test dokončen') : (S.log[t] >= GOAL ? 'Hotovo na dnešek' : 'Hotovo');
   const more = advanced && S.done < TOTAL;
   view.innerHTML = `<div class="step" style="padding-top:32px"><div class="body">
@@ -406,11 +432,12 @@ function finish() {
 // ---------- obrazovky ----------
 const V = {
   dnes() {
-    const t = today();
+    const t = today(), hour = new Date().getHours();
     const L = Math.min(S.done, TOTAL - 1), u = Math.floor(L / 7), d = L % 7, unit = U[u], st = stageOf(u);
     const due = dueCards(9999).length, n = learned().length;
     const fixes = Object.keys(S.miss).filter(k => S.miss[k].d <= t).length;
     const finished = S.done >= TOTAL, doneToday = S.last === t && S.done > 0;
+    const saved = loadSes();
     const g = unit.grammar[Math.floor(Math.min(d, 5) / 2)];
     const rev = `${Math.min(due, 15)} ${plural(Math.min(due, 15), 'kartička', 'kartičky', 'kartiček')}${fixes ? ' a ' + Math.min(fixes, 5) + ' ' + plural(Math.min(fixes, 5), 'chyba', 'chyby', 'chyb') + ' k opravě' : ''}`;
     const items = d === 6
@@ -427,30 +454,41 @@ const V = {
     Object.keys(S.log).forEach(k => { total += S.log[k]; days++; });
     const mt = S.log[t] || 0, streak = curStreak();
     const broken = S.last >= 0 && S.last < t - 1;
+    const buttons = saved ? ''
+      : finished ? `<button type="button" class="btn primary big" id="practice" ${n ? '' : 'disabled'}>Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
+      : doneToday ? `<button type="button" class="btn primary big" id="go">Pokračovat další lekcí</button><button type="button" class="btn big" id="practice">Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
+      : `<button type="button" class="btn primary big" id="go">${S.done === 0 ? 'Začít první lekci' : 'Začít dnešních 20 minut'}</button>${S.done > 0 ? '<button type="button" class="btn quiet" id="quick">Dnes mám jen 5 minut</button>' : ''}`;
     view.innerHTML = `
+      <p class="hello">${hour < 10 ? 'Dobré ráno' : (hour < 18 ? 'Dobrý den' : 'Dobrý večer')}</p>
+      ${saved ? `<section class="card"><div class="kicker">Rozdělaná lekce</div><h1>${esc(saved.title)}</h1><p>Skončil jsi u kroku ${saved.i + 1} z ${saved.steps.length}. Můžeš navázat přesně tam.</p>
+        <button type="button" class="btn primary big" id="resume">Pokračovat v lekci</button><button type="button" class="btn quiet" id="drop">Zahodit a začít znovu</button></section>` : ''}
+      ${broken && !doneToday ? `<p class="warn-note">Vítej zpátky. Dnes začíná nová série.</p>` : ''}
       <section class="card">
         ${finished ? `<div class="kicker">Kurz dokončen</div><h1>Všech ${TOTAL} lekcí máš za sebou</h1><p>Opakuj kartičky, dokud se ti budou nabízet. Lekce si můžeš projít znovu v Plánu.</p>`
-        : `<div class="kicker">Týden ${u + 1} z ${U.length} · den ${d + 1} · úroveň ${st[2]}</div><h1>${esc(unit.t)}</h1><p class="muted">${esc(unit.s)}</p><ul class="today-list">${items}</ul>`}
+        : `<div class="kicker">Týden ${u + 1} z ${U.length} · den ${d + 1} · úroveň ${st[2]}</div>${saved ? `<h2>${esc(unit.t)}</h2>` : `<h1>${esc(unit.t)}</h1>`}<p class="muted">${esc(unit.s)}</p><ul class="today-list">${items}</ul>`}
         ${doneToday && !finished ? `<p class="done-note">Dnešní lekce je hotová${mt >= GOAL ? ' a denní cíl splněný' : ''}. Když tě to chytlo, pokračuj další.</p>` : ''}
-        ${broken && !doneToday ? `<p class="warn-note">Naposledy jsi tu byl před ${t - S.last} dny. Série se vynulovala, dnes začíná nová.</p>` : ''}
-        ${finished ? `<button type="button" class="btn primary big" id="practice" ${n ? '' : 'disabled'}>Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
-          : doneToday ? `<button type="button" class="btn primary big" id="go">Pokračovat další lekcí</button><button type="button" class="btn big" id="practice">Procvičit kartičky${due ? ' (' + due + ')' : ''}</button>`
-          : `<button type="button" class="btn primary big" id="go">${S.done === 0 ? 'Začít první lekci' : 'Začít dnešních 20 minut'}</button>${S.done > 0 ? '<button type="button" class="btn quiet" id="quick">Dnes mám jen 5 minut</button>' : ''}`}
+        ${buttons}
       </section>
       <section class="card">
-        <div class="row spread"><h2>Docházka</h2><span class="muted small">dnes ${mt} z ${GOAL} minut</span></div>
+        <div class="row spread"><h2>Docházka</h2><span class="streak"><strong>${streak}</strong> ${plural(streak, 'den', 'dny', 'dní')} v řadě</span></div>
         <div class="prog"><i style="width:${Math.min(100, Math.round(mt / GOAL * 100))}%"></i></div>
-        <div class="stats"><div class="stat"><strong>${streak}</strong><span>${plural(streak, 'den', 'dny', 'dní')} v řadě</span></div>
-        <div class="stat"><strong>${week}/7</strong><span>dní za poslední týden</span></div>
-        <div class="stat"><strong>${S.best || 0}</strong><span>nejdelší série</span></div></div>
-        <div class="cal">${cal}</div>
-        <p class="muted small">Posledních 28 dní, dnešek je vpravo dole. Plné políčko znamená aspoň ${GOAL} minut, světlé kratší učení, šedé vynechaný den. Celkem ${days} ${plural(days, 'den', 'dny', 'dní')} a ${total >= 120 ? Math.round(total / 60) + ' hodin' : total + ' minut'} učení. Počítá se jen čas, kdy opravdu odpovídáš, a jen dokončené lekce.</p>
+        <p class="muted">Dnes ${mt} z ${GOAL} minut.</p>
       </section>
-      <section class="card"><div class="row spread"><h2>Rok angličtiny</h2><span class="muted small">${S.done} z ${TOTAL} lekcí · ${n} slovíček</span></div><div class="year">${cells}</div>
-        <p class="muted small">Jedno políčko je jeden týden. Úrovně: ${STAGES.map(s => `od ${s[0] + 1}. týdne ${s[1].toLowerCase()} (${s[2]})`).join(', ')}.</p></section>
-      ${!canSpeak ? '<p class="muted small">Tento prohlížeč neumí číst anglický text nahlas, takže diktát a poslech se přeskočí. Hlas funguje v Chromu, Edge a Safari.</p>' : ''}`;
+      <details><summary>Docházka podrobně</summary><div class="dbody">
+        <div class="stats"><div class="stat"><strong>${week}/7</strong><span>dní za poslední týden</span></div>
+        <div class="stat"><strong>${S.best || 0}</strong><span>nejdelší série</span></div>
+        <div class="stat"><strong>${total >= 120 ? Math.round(total / 60) + ' h' : total + ' min'}</strong><span>učení celkem</span></div></div>
+        <div class="cal">${cal}</div>
+        <p class="muted small">Posledních 28 dní, dnešek je vpravo dole. Plné políčko znamená aspoň ${GOAL} minut, světlé kratší učení, šedé den bez učení. Počítá se jen čas, kdy opravdu odpovídáš, a jen dokončené lekce.</p>
+      </div></details>
+      <details><summary>Mapa celého roku</summary><div class="dbody">
+        <p>${S.done} z ${TOTAL} lekcí · ${n} ${plural(n, 'slovíčko', 'slovíčka', 'slovíček')}</p><div class="year">${cells}</div>
+        <p class="muted small">Jedno políčko je jeden týden. Úrovně: ${STAGES.map(s => `od ${s[0] + 1}. týdne ${s[1].toLowerCase()} (${s[2]})`).join(', ')}.</p>
+      </div></details>
+      ${!canSpeak ? '<p class="muted">Tento prohlížeč neumí číst anglický text nahlas, takže diktát a poslech se přeskočí. Hlas funguje v Chromu, Edge a Safari.</p>' : ''}`;
     const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
     on('go', () => startLesson(S.done, true)); on('practice', startPractice); on('quick', startQuick);
+    on('resume', () => resume(saved)); on('drop', () => { clearSes(); show('dnes'); });
   },
   plan() {
     const cur = Math.floor(S.done / 7);
@@ -503,11 +541,17 @@ const V = {
     let code = '';
     try { code = btoa(unescape(encodeURIComponent(JSON.stringify(S)))); } catch (e) {}
     view.innerHTML = `<h1>Nastavení</h1>
+      <section class="card"><h2>Velikost písma</h2>${fsButtons()}</section>
+      <section class="card"><h2>Psaní na klávesnici</h2><p class="muted small">Když se ti na telefonu špatně píše, můžeš místo psaní skládat věty ze slov a vybírat z možností.</p>
+        <select id="nt" aria-label="Způsob odpovídání"><option value="0">Odpovědi píšu na klávesnici</option><option value="1">Raději skládám ze slov a vybírám</option></select></section>
       <section class="card"><h2>Rychlost hlasu</h2><div class="row"><select id="rate" aria-label="Rychlost hlasu"><option value="0.7">Pomalu</option><option value="0.85">Mírně zpomaleně</option><option value="1">Normálně</option></select>${spkBtn('Hello, how are you today?')}</div></section>
       <section class="card"><h2>Přenos postupu na jiné zařízení</h2><p class="muted small">Postup se ukládá jen v tomto prohlížeči. Chceš-li pokračovat jinde, zkopíruj kód sem a vlož ho v nastavení na druhém zařízení. Kód si občas ulož i jako zálohu.</p>
         <textarea class="code" id="exp" readonly aria-label="Kód s tvým postupem">${esc(code)}</textarea><button type="button" class="btn" id="copy">Zkopírovat kód</button>
         <textarea class="code" id="imp" placeholder="Sem vlož kód z druhého zařízení" aria-label="Kód k načtení"></textarea><button type="button" class="btn" id="load">Načíst postup z kódu</button><p class="small" id="msg" role="status"></p></section>
       <section class="card"><h2>Začít od začátku</h2><p class="muted small">Smaže všechny lekce, kartičky i docházku v tomto prohlížeči.</p><div id="rs"><button type="button" class="btn danger" id="reset">Smazat postup</button></div></section>`;
+    bindFs(() => show('nastaveni'));
+    const nt = document.getElementById('nt'); nt.value = S.noType ? '1' : '0';
+    nt.onchange = () => { S.noType = nt.value === '1'; save(); };
     const rate = document.getElementById('rate'); rate.value = String(S.rate);
     rate.onchange = () => { S.rate = +rate.value; save(); speak('Hello, how are you today?'); };
     const msg = document.getElementById('msg'), exp = document.getElementById('exp');
@@ -530,7 +574,24 @@ const V = {
   }
 };
 
+function intro(i) {
+  document.body.classList.add('insession');
+  const pages = [
+    ['Vítej', `<p>Každý den tě čeká jedna lekce na zhruba 20 minut: opakování, 8 nových slovíček, kousek gramatiky, věty a výslovnost.</p><p>Na úvodní obrazovce vždy stačí stisknout jedno velké tlačítko. Lekci můžeš kdykoli přerušit a dokončit později.</p>`],
+    ['Zapni si zvuk', `<p>Slovíčka a věty ti aplikace čte nahlas. Zkus si to:</p>${playRow('Hello, how are you today?') || '<p class="muted">V tomto prohlížeči hlas nefunguje. Zkus Chrome, Edge nebo Safari.</p>'}<p class="muted">Nic neslyšíš? Zkontroluj hlasitost a tichý režim telefonu. Tlačítko Pomalu přehraje totéž zpomaleně.</p>`],
+    ['Jak velké písmo ti vyhovuje?', `${fsButtons()}<div class="card wordcard"><div class="en">good morning</div><div class="cz">dobré ráno</div></div><p class="muted">Velikost můžeš kdykoli změnit v Nastavení.</p>`]
+  ];
+  view.innerHTML = `<div class="step" style="padding-top:28px"><div class="kicker">Krok ${i + 1} ze ${pages.length}</div><div class="body"><h1>${pages[i][0]}</h1>${pages[i][1]}</div>
+    <button type="button" class="btn primary big" id="nx">${i < pages.length - 1 ? 'Pokračovat' : 'Hotovo, jdeme na to'}</button></div>`;
+  bindFs(() => intro(i));
+  document.getElementById('nx').onclick = () => {
+    if (i < pages.length - 1) return intro(i + 1);
+    S.intro = 1; save(); document.body.classList.remove('insession'); show('dnes');
+  };
+  window.scrollTo(0, 0);
+}
 function show(tab) {
+  if (!S.intro) return intro(0);
   if (!V[tab]) tab = 'dnes';
   tabs.querySelectorAll('button').forEach(b => { if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   V[tab]();

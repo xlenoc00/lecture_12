@@ -46,7 +46,12 @@ Když nemám čas, chci „pětiminutovku“: pár kartiček, tři otázky z gra
 - Docházka, ať vidím, jestli se neflákám: počet dní v řadě, nejdelší série, dnešní minuty proti cíli 20 minut, kalendář posledních 28 dní a upozornění, když sérii přeruším. Počítej jen čas, kdy opravdu odpovídám, a jen dokončené lekce.
 - Mapa celého roku s vybarvenými hotovými týdny a výsledky týdenních testů.
 - Po dokončení lekce nabídni tlačítko pro pokračování další lekcí.
-- Světlý i tmavý režim podle nastavení zařízení, dobře čitelné písmo.
+- Světlý i tmavý režim podle nastavení zařízení.
+- Přizpůsob vzhled padesátiletému uživateli, ale bez blahosklonnosti: žádný text menší než 16 px, vysoký kontrast, přepínač velikosti písma ve třech stupních, spodní nabídka s ikonami i popisky, tlačítka přehrávání se slovem „Přehrát“ a vedle nich „Pomalu“.
+- Lekce jde kdykoli přerušit a později dokončit přesně tam, kde jsem skončil. Nahoře ukazuj krok a odhad zbývajících minut.
+- Chyby oznamuj klidně („Skoro. Správně je…“) a bez červené barvy. Po vynechaném dni mě přivítej zpátky, nevyčítej.
+- V nastavení možnost nepsat na klávesnici: místo diktátu skládání věty ze slov, místo psaní slovíček výběr z možností.
+- Při prvním spuštění krátký průvodce: jak lekce vypadá, zkouška zvuku a volba velikosti písma.
 
 ## Technické požadavky
 
