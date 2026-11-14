@@ -4,7 +4,11 @@ Roční kurz angličtiny od úplných základů po úroveň B1 až B2: 52 týdn�
 
 ## Spuštění
 
-Otevři `index.html` v prohlížeči (Chrome, Edge nebo Safari kvůli hlasu). Nic se neinstaluje.
+Na webu: https://xlenoc00.github.io/lecture_12/anglictina/ (po zapnutí GitHub Pages).
+
+Na telefonu adresu otevři a dej „Přidat na plochu“. Kurz se pak spouští ikonou jako aplikace a funguje i bez internetu (kromě hlasu, který potřebuje prohlížeč).
+
+Lokálně stačí otevřít `index.html` v prohlížeči (Chrome, Edge nebo Safari kvůli hlasu). Nic se neinstaluje.
 
 ## Co je uvnitř
 
