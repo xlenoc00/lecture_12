@@ -1,9 +1,10 @@
 name: Investiční AI tým
 
 on:
-  schedule:
-    # Každé 4 hodiny, nonstop (časy jsou v UTC). Krypto se obchoduje i o víkendu.
-    - cron: "17 */4 * * *"
+  # Automatické spouštění je vypnuté (není nastavený API klíč).
+  # Zapnutí: odkomentuj dva řádky níže.
+  # schedule:
+  #   - cron: "17 */4 * * *"   # každé 4 hodiny (UTC)
   workflow_dispatch:
     inputs:
       otazka:
